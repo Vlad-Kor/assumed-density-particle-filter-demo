@@ -11,7 +11,8 @@ requires-python = ">=3.12"
 dependencies = [
     "numpy (>=2.3.5,<3.0.0)",
     "stonesoup (>=1.8,<2.0)",
-    "ipykernel (>=7.1.0,<8.0.0)"
+    "ipykernel (>=7.1.0,<8.0.0)",
+    "scipy (>=1.16.3,<2.0.0)"
 ]
 
 
