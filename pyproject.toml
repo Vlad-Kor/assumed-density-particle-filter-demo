@@ -12,7 +12,10 @@ dependencies = [
     "numpy (>=2.3.5,<3.0.0)",
     "stonesoup (>=1.8,<2.0)",
     "ipykernel (>=7.1.0,<8.0.0)",
-    "scipy (>=1.16.3,<2.0.0)"
+    "scipy (>=1.16.3,<2.0.0)",
+    "deterministic-gaussian-sampling-fibonacci @ git+https://github.com/KIT-ISAS/deterministic_gaussian_sampling_fibonacci.git",
+    "nbformat (>=5.10.4,<6.0.0)",
+    "ipython (>=9.8.0,<10.0.0)"
 ]
 
 
