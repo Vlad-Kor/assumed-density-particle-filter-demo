@@ -1,72 +1,4 @@
 #!/usr/bin/env python
-
-"""
-=====================================
-4 - Sampling methods: particle filter
-=====================================
-"""
-
-# %%
-# In the previous tutorials we encountered some shortcomings in describing distributions as
-# Gaussians, albeit with considerable flexibility in coping with the non-linear transforms.
-#
-# Sampling methods offer an attractive alternative to such parametric methods in that there is
-# no need for complicated though approximate covariance calculations. In this tutorial we look at a
-# class of *sequential Monte Carlo sampling* methods, and in particular, the *particle filter*.
-#
-# Colloquially we can think of a particle filter as a series of point samples being recursed
-# through the predict-update stages of a Bayesian filter. The diversity of samples compensates for
-# the lack of a covariance estimate, though often at the expense of increased computation
-# requirements.
-#
-# Background
-# ----------
-#
-# In more detail, we seek to approximate the posterior state estimate as a sum of samples, or
-# particles,
-#
-# .. math::
-#       p(\textbf{x}_{k}|\textbf{z}_{1:k}) \approx
-#       \sum_{i} w_{k}^i \delta (\textbf{x}_{k} - \textbf{x}_{k}^i)
-#
-# where :math:`w_{k}^i` are weights such that :math:`\sum\limits_{i} w_{k}^i = 1`. This posterior
-# can be calculated, and subsequently maintained, by successive applications of the
-# Chapman-Kolmogorov equation and Bayes rule in an analogous manner to the Kalman family of
-# filters of previous tutorials. There is considerable flexibility in how to sample from these
-# various distributions and the interested reader can refer to [#]_ for more detail.
-#
-# The present tutorial focuses on a so-called *sequential importance resampling* filter. This is
-# facilitated by a number of Stone Soup classes. The weight-update equation is,
-#
-# .. math::
-#           w^i_k = w^i_{k-1}
-#           \frac{p(\mathbf{z}_k|\mathbf{x}^i_k) p(\mathbf{x}^i_k|\mathbf{x}^1_{k-1})}
-#                {q(\mathbf{x}^i_k|\mathbf{x}^1_{k-1},\mathbf{z}^i_{1:k})}
-#
-# where :math:`p(\mathbf{z}_k | \mathbf{x}^i_k)` is the likelihood distribution (as defined by the
-# :class:`~.MeasurementModel`) and :math:`p(\mathbf{x}^i_k|\mathbf{x}^1_{k-1})` is the transition
-# probability distribution (:class:`~.TransitionModel`). The :math:`q(\cdot)` distribution -- the
-# importance density -- should approximate the posterior distribution, while still being easy to
-# sample from.
-#
-# A common occurrence in such methods is that of *sample impoverishment*. After a few iterations,
-# all but a small number of the particles will have negligible weight. This affects accuracy and
-# wastes computation on particles with little effect on the estimate. Many resampling schemes
-# exist and are designed to redistribute particles to areas where the posterior probability is
-# higher. In Stone Soup such resampling is accomplished by a :class:`~.Resampler`. More detail is
-# provided in the
-# example below.
-
-# %%
-#
-# Nearly-constant velocity example
-# --------------------------------
-# We continue in the same vein as the previous tutorials.
-#
-# Ground truth
-# ^^^^^^^^^^^^
-# Import the necessary libraries
-
 import numpy as np
 
 from datetime import datetime
@@ -140,34 +72,7 @@ plotter.fig
 
 # %%
 # Set up the particle filter
-# ^^^^^^^^^^^^^^^^^^^^^^^^^^
-# Analogously to the Kalman family, we create a :class:`~.ParticlePredictor` and a
-# :class:`~.ParticleUpdater` which take responsibility for the predict and update steps
-# respectively. These require a :class:`~.TransitionModel` and :class:`~.MeasurementModel` as
-# before.
-# To cope with sample sparsity we also include a resampler, in this instance
-# :class:`~.SystematicResampler`, which is passed to the updater. It should be noted that there are
-# many resampling schemes, and almost as many choices as to when to undertake resampling. The
-# systematic resampler is described in [#]_, and in what follows below resampling is undertaken
-# at each time-step. More resamplers that are included in Stone Soup are covered in the
-# `Resampler Tutorial <https://stonesoup.readthedocs.io/en/latest/auto_tutorials/sampling/Resamp\
-# lingTutorial.html#sphx-glr-auto-tutorials-sampling-resamplingtutorial-py>`_
-
-# %%
-# Use of Effective Sample Size resampler (ESS)
-# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-# Resampling removes particles with a low weight and duplicates particles with a high weight.
-# A side effect of this is that additional variance is added. Use of :class:`~.SystematicResampler`
-# at each time-step means that additional variance is being introduced when it may not necessarily
-# be required. To reduce the additional variance, it may be optimal to resample less frequently.
-#
-# The Effective Sample Size resampler (:class:`~.ESSResampler`) compares the variance of the
-# unnormalised weights of the particles to a pre-specified threshold, and only resamples when the
-# variance is greater than this threshold. This threshold is often calculated by the ESS criterion
-# (at time n) given by:
-#
-# .. math::
-#           ESS = \left(\sum_{i=1}^{N} (W_{n}^i)^2\right)^{-1}
+# use 
 
 from stonesoup.predictor.particle import ParticlePredictor
 predictor = ParticlePredictor(transition_model)
@@ -177,34 +82,7 @@ from stonesoup.base import Property
 
 
 LVol = 1000
-class GausADResampler(Resampler):
-	n_samples: int = Property(default=1000,
-							 doc="Number of samples to draw from the distribution.")
-	def resample(self, particles):
-		LVol = self.n_samples
-		
-
-		# StoneSoup stores particles as (ndim, N)
-		X = np.asarray(particles.state_vector).T  # -> (N, ndim)
-
-		# get normalised weights
-		w = np.asarray(particles.weight, dtype=float)
-		w = w / w.sum()
-
-		# weighted mean/cov
-		mu = (w[:, None] * X).sum(axis=0)
-		Xm = X - mu
-		C = (Xm.T * w) @ Xm
-
-		# deterministic redraw
-		X_new = sample_gaussian_fibonacci(mu, C, LVol, type='Fibonacci')  # (N, ndim)
-		N = X_new.shape[0]
-
-		# return a NEW ParticleState with uniform weights
-		new = ParticleState(state_vector=StateVectors(X_new.T),
-							timestamp=particles.timestamp)
-		new.weight = np.full(N, 1.0 / N)
-		return new
+from pwn_particle_filter.resampler import GausADResampler
 resampler = GausADResampler(LVol)
 from stonesoup.updater.particle import ParticleUpdater
 updater = ParticleUpdater(measurement_model, resampler)
@@ -233,7 +111,6 @@ samples = sample_gaussian_fibonacci(np.array([0, 1, 0, 1]),
 
 number_particles = samples.shape[0]
 
-print("init samples shape:", samples.shape)
 # Create prior particle state.
 prior = ParticleState(state_vector=StateVectors(samples.T),
 					  weight=np.array([Probability(1/number_particles)]*number_particles),
@@ -262,25 +139,3 @@ try:
 	plotter.fig.write_html("particle_filter.html", auto_open=True)
 except Exception:
 	print("could not write html")
-
-
-# %%
-# Key points
-# ----------
-# 1. Sampling methods offer an attractive alternative to Kalman-based filtering for recursive
-#    state estimation.
-# 2. The particle filter trades off a more subtle quantification of a non-Gaussian
-#    estimate against increased computational effort.
-# 3. Very often particle filters encounter sample impoverishment and require a resampling step.
-
-# %%
-# References
-# ----------
-# .. [#] Sanjeev Arulampalam M., Maskell S., Gordon N., Clapp T. 2002, Tutorial on Particle Filters
-#        for Online Nonlinear/Non-Gaussian Bayesian Tracking,  IEEE transactions on signal
-#        processing, vol. 50, no. 2
-#
-# .. [#] Carpenter J., Clifford P., Fearnhead P. 1999, An improved particle filter for non-linear
-#        problems, IEE Proc., Radar Sonar Navigation, 146:2–7
-
-# sphinx_gallery_thumbnail_path = '_static/sphinx_gallery/Tutorial_4.PNG'
