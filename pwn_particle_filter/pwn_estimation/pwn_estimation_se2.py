@@ -6,8 +6,8 @@ def generate_pwn_sample_random(mu, cov, num_samples):
 	samples[:,0] = samples[:,0] % (2 * np.pi)
 	return samples
 
-
-def estimate_pwn_parameters_d3(samples):
+# weight is optional particle.weight
+def estimate_pwn_parameters_d3(samples, weights=None):
 	# see https://isas.iar.kit.edu/pdf/MFI2014_Kurz-PWN.pdf
 	# calculate hybrid moments
 
@@ -23,8 +23,17 @@ def estimate_pwn_parameters_d3(samples):
 	]) # shape (N,4)
 	print(s_tilde.shape)
 
-	mu_tilde = np.mean(s_tilde, axis=0) # shape (4,)
-	C_tilde = np.cov(s_tilde, rowvar=False, bias=True) # shape (4,4)
+	if weights is None:
+		mu_tilde = np.mean(s_tilde, axis=0) # shape (4,)
+		C_tilde = np.cov(s_tilde, rowvar=False, bias=True) # shape (4,4)
+	else:
+		w = np.asarray(weights, dtype=float)
+		w = w / w.sum()
+
+		# weighted mean/cov
+		mu_tilde = (w[:, None] * samples).sum(axis=0)
+		Xm = samples - mu_tilde
+		C_tilde = (Xm.T * w) @ Xm
 
 	mu = np.array([np.arctan2(mu_tilde[1], mu_tilde[0]), mu_tilde[2], mu_tilde[3]])
 

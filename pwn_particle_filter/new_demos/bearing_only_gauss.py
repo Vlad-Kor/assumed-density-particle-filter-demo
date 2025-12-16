@@ -1,0 +1,193 @@
+from deterministic_gaussian_sampling_fibonacci import sample_gaussian_fibonacci
+import numpy as np
+from matplotlib import pyplot as plt
+
+from datetime import datetime
+from datetime import timedelta
+
+# Load Stone Soup materials
+from stonesoup.types.state import State
+from stonesoup.types.array import StateVector, CovarianceMatrix
+from stonesoup.models.transition.linear import (CombinedLinearGaussianTransitionModel, ConstantVelocity)
+from stonesoup.models.measurement.nonlinear import Cartesian2DToBearing
+
+# Load the filter components
+from stonesoup.updater.particle import ParticleUpdater
+from stonesoup.predictor.particle import ParticlePredictor
+from pwn_particle_filter.resampler import GausADResampler
+from stonesoup.deleter.time import UpdateTimeStepsDeleter
+from stonesoup.tracker.simple import SingleTargetTracker
+
+# set a random seed and start of the simulation
+np.random.seed(2001)
+start_time = datetime.now()
+
+# %%
+# 1) Create the moving platform and the Bearing-Only radar
+# --------------------------------------------------------
+# Firstly, we create the initial state of the platform, including the origin point and the
+# cartesian (x, y) movement direction. Then, we create a transition model (in 2D cartesian coordinates)
+# of the platform.
+# At this point, we can set up the Radar which receives only the bearing measurements from the targets using the
+# :class:`~.RadarBearing` sensor.
+
+# Import the platform to place the sensor
+from stonesoup.platform.base import MovingPlatform
+
+# Define the platform location, place it in the origin, and define its Cartesian movements.
+# In addition, specify the position and velocity mapping. This is done in 2D Cartesian coordinates.
+
+platform_state_vector = StateVector([[0], [-5], [0], [-7]])
+position_mapping = (0, 2)
+velocity_mapping = (1, 3)
+
+# Create the initial state (position and time)
+platform_state = State(platform_state_vector, start_time)
+
+# Create a platform transition model, let's assume it is moving with constant velocity
+platform_transition_model = CombinedLinearGaussianTransitionModel([
+    ConstantVelocity(0.0), ConstantVelocity(0.0)])
+
+# We can instantiate the platform's initial state, position and velocity mapping, and 
+# the transition model using the  :class:`~.MovingPlatform` platform class.
+platform = MovingPlatform(states=platform_state,
+                          position_mapping=position_mapping,
+                          velocity_mapping=velocity_mapping,
+                          transition_model=platform_transition_model)
+
+# At this stage, we need to create the sensor, let's import the RadarBearing. 
+# This sensor only provides the bearing measurements from the target detections, 
+# the range is not specified.
+from stonesoup.sensor.radar.radar import RadarBearing
+
+# Configure the radar noise, since we are using just a single dimension we need to specify only the
+# noise associated with the bearing dimension, we assume a bearing accuracy of +/- 0.025 degrees for 
+# each measurement
+noise_covar = CovarianceMatrix(np.array(np.diag([np.deg2rad(0.025) ** 2])))
+
+# This radar needs to be informed of the x and y mapping of the target space.
+radar_mapping = (0, 2)
+
+# Instantiate the radar
+radar = RadarBearing(ndim_state=4,
+                     position_mapping=radar_mapping,
+                     noise_covar=noise_covar)
+
+# As presented in the other examples we have to place the sensor on the platform.
+platform.add_sensor(radar)
+# At this point we can also check the offset rotation or the mounting of the radar in respect to the
+# platform as shown in other tutorials.
+
+# %%
+# 2) Generate the ground truth target movements
+# --------------------------------------------------
+# We now build a ground truth simulator of a single target with a transition model
+# and a known initial state.
+
+# Load the single target ground truth simulator
+from stonesoup.simulator.simple import SingleTargetGroundTruthSimulator
+from stonesoup.types.numeric import Probability  # Similar to a float type
+from stonesoup.types.state import ParticleState
+from stonesoup.types.array import StateVectors
+
+# Instantiate the transition model
+transition_model = CombinedLinearGaussianTransitionModel([
+    ConstantVelocity(1.0), ConstantVelocity(1.0)])
+
+LVol = 1000
+
+# Sample from the prior Gaussian distribution around the true initial state
+samples = sample_gaussian_fibonacci(np.array([50, 0, 50, 0]),
+								  np.diag([1, 1, 1, 1]),
+								  LVol,
+								  type='Fibonacci')
+
+number_particles = samples.shape[0]
+
+# Create prior particle state.
+from stonesoup.types.groundtruth import GroundTruthPath, GroundTruthState
+prior = ParticleState(state_vector=StateVectors(samples.T),
+					  weight=np.array([Probability(1/number_particles)]*number_particles),
+					  timestamp=start_time)
+initial_truth = GroundTruthState([50, 0, 50, 0], timestamp=start_time)
+
+# Set up the ground truth simulation
+groundtruth_simulation = SingleTargetGroundTruthSimulator(
+    transition_model=transition_model,
+    initial_state=initial_truth,
+    timestep=timedelta(seconds=1),
+    number_steps=100
+)
+
+# %%
+# 3) Set up the detection simulation that generates the bearing measurements
+# --------------------------------------------------------------------------
+# After defining the measurement model and simulation, we will use these components to run our example.
+# The measurement model is the :class:`~.Cartesian2DToBearing`.
+
+# Define the measurement model using a Cartesian to bearing
+meas_model = Cartesian2DToBearing(
+    ndim_state=4,
+    mapping=(0, 2),
+    noise_covar=noise_covar)
+
+# Import the PlatformDetectionSimulator
+from stonesoup.simulator.platform import PlatformDetectionSimulator
+
+sim = PlatformDetectionSimulator(groundtruth=groundtruth_simulation,
+                                 platforms=[platform])
+
+# %%
+# 4) Set up the tracker
+# ---------------------
+# Instantiate the filter components
+predictor = ParticlePredictor(transition_model)
+
+updater = ParticleUpdater(measurement_model=meas_model,
+                         resampler=GausADResampler())
+
+from stonesoup.types.hypothesis import SingleHypothesis
+from stonesoup.types.track import Track
+
+times = []
+truth_path = GroundTruthPath()
+platform_path = GroundTruthPath()
+saved_detections = []  # list[(time, detections_set)]
+
+for time, detections in sim:
+    times.append(time)
+    saved_detections.append((time, detections))
+
+    gt = next(iter(groundtruth_simulation.current[1]))  # GroundTruthPath
+    truth_path.append(gt[-1])                           # GroundTruthState at this time
+    platform_path.append(GroundTruthState(platform.state_vector, timestamp=time))
+
+track = Track()
+state = prior
+
+for time, detections in saved_detections:
+    prediction = predictor.predict(state, timestamp=time)
+
+    if detections:
+        det = next(iter(detections))
+        updater.measurement_model = det.measurement_model
+        state = updater.update(SingleHypothesis(prediction, det))
+    else:
+        state = prediction
+
+    track.append(state)
+
+from stonesoup.plotter import AnimatedPlotterly
+plotter = AnimatedPlotterly(times, tail_length=0.3)
+plotter.plot_ground_truths(truth_path, [0, 2])
+plotter.plot_ground_truths(platform_path, [0, 2], label="Sensor platform")
+plotter.plot_tracks(track, [0, 2], particle=True, plot_history=False)
+plotter.fig
+
+
+# # %%
+# open browser for non interactive view
+try:
+	plotter.fig.write_html("particle_filter.html", auto_open=True)
+except Exception:
+	print("could not write html")

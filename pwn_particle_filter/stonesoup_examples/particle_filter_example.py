@@ -222,6 +222,13 @@ plotter.plot_tracks(track, [0, 2], particle=True, plot_history=False)
 plotter.fig
 
 # %%
+# open browser for non interactive view
+try:
+	plotter.fig.write_html("particle_filter.html", auto_open=True)
+except Exception:
+	print("could not write html")
+
+# %%
 # Key points
 # ----------
 # 1. Sampling methods offer an attractive alternative to Kalman-based filtering for recursive

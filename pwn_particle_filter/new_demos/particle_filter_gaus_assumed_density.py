@@ -72,7 +72,6 @@ plotter.fig
 
 # %%
 # Set up the particle filter
-# use 
 
 from stonesoup.predictor.particle import ParticlePredictor
 predictor = ParticlePredictor(transition_model)
