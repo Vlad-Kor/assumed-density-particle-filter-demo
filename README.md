@@ -1,4 +1,4 @@
-# Stonesoup demos for Asummed Density Particle Filter with Gauss and PWN
+# Stonesoup demos for Asummed Density Particle Filter with Gauss
 requirements: poetry: `pip install poetry`
 
 run with:
