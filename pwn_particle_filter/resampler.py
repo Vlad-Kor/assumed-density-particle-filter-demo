@@ -31,6 +31,9 @@ class GausADResampler(Resampler):
 		Xm = X - mu
 		C = (Xm.T * w) @ Xm
 
+		# regularize covariance to avoid numerical issues
+		C = 0.5*(C + C.T) + 1e-9*np.eye(C.shape[0])
+
 		# deterministic redraw
 		X_new = sample_gaussian_fibonacci(mu, C, sample_size, type='Fibonacci')  # (N, ndim)
 		N = X_new.shape[0]

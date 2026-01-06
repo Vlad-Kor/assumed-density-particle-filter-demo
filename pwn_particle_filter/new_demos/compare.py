@@ -48,7 +48,7 @@ from stonesoup.platform.base import MovingPlatform
 # Define the platform location, place it in the origin, and define its Cartesian movements.
 # In addition, specify the position and velocity mapping. This is done in 2D Cartesian coordinates.
 
-platform_state_vector = StateVector([[0], [-5], [0], [-7]])
+platform_state_vector = StateVector([[0], [0], [0], [0]])
 position_mapping = (0, 2)
 velocity_mapping = (1, 3)
 
@@ -57,7 +57,7 @@ platform_state = State(platform_state_vector, start_time)
 
 # Create a platform transition model, let's assume it is moving with constant velocity
 platform_transition_model = CombinedLinearGaussianTransitionModel([
-	ConstantVelocity(0.0), ConstantVelocity(0.0)])
+	ConstantVelocity(0.1), ConstantVelocity(0)])
 
 # We can instantiate the platform's initial state, position and velocity mapping, and 
 # the transition model using the  :class:`~.MovingPlatform` platform class.
@@ -103,13 +103,13 @@ from stonesoup.types.array import StateVectors
 
 # Instantiate the transition model
 transition_model = CombinedLinearGaussianTransitionModel([
-	ConstantVelocity(1.0), ConstantVelocity(1.0)])
+	ConstantVelocity(5.0), ConstantVelocity(5.0)])
 
 # make prior
-prior_mu = np.array([50, 0, 50, 0])
-prior_cov = np.diag([1, 1, 1, 1])
-
-sample_size = 100
+# Target starts near the path
+prior_mu = np.array([80, -8, 12, -1])
+prior_cov = np.diag([60**2, 4**2, 60**2, 4**2])
+sample_size = 1000
 
 # Sample from the prior Gaussian distribution around the true initial state
 samples = sample_gaussian_fibonacci(prior_mu,
@@ -139,8 +139,8 @@ initial_truth = GroundTruthState(prior_mu, timestamp=start_time)
 groundtruth_simulation = SingleTargetGroundTruthSimulator(
 	transition_model=transition_model,
 	initial_state=initial_truth,
-	timestep=timedelta(seconds=1),
-	number_steps=100
+	timestep=timedelta(seconds=2),
+	number_steps=60
 )
 
 # %%
@@ -168,7 +168,7 @@ sim = PlatformDetectionSimulator(groundtruth=groundtruth_simulation,
 g_predictor = ParticlePredictor(transition_model)
 
 g_updater = ParticleUpdater(measurement_model=meas_model,
-						 resampler=GausADResampler())
+						 resampler=GausADResampler(n_samples=sample_size))
 
 iid_predictor = ParticlePredictor(transition_model)
 iid_updater = ParticleUpdater(measurement_model=meas_model,
@@ -225,14 +225,7 @@ for time, detections in saved_detections:
 	k_track.append(k_state)
 	iid_track.append(iid_state)
 
-from stonesoup.plotter import AnimatedPlotterly
-plotter = AnimatedPlotterly(times, tail_length=0.3)
-plotter.plot_ground_truths(truth_path, [0, 2])
-plotter.plot_ground_truths(platform_path, [0, 2], label="Sensor platform")
-plotter.plot_tracks(g_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Deterministic Samples")
-plotter.plot_tracks(k_track, [0, 2], particle=False, plot_history=False, label="Extended Kalman Filter", line=dict(color='green'), marker=dict(color='green'))
-plotter.plot_tracks(iid_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Random Samples", line=dict(color='red'), marker=dict(color='red'))
-plotter.fig
+
 
 # Now compare them both
 
@@ -252,13 +245,21 @@ def get_mean_from_particle_track(track):
 		))
 	return mean_track
 
+def gaussian_track_to_mean_state_track(track): # when kalman fails cov can have complex numbers
+    out = Track()
+    for s in track:
+        out.append(State(state_vector=StateVector(np.asarray(s.state_vector)),
+                         timestamp=s.timestamp))
+    return out
+
+k_mean_track = gaussian_track_to_mean_state_track(k_track)
 g_mean_track = get_mean_from_particle_track(g_track)
 iid_mean_track = get_mean_from_particle_track(iid_track)
 
 
 
 # OSPA parameters
-c = 100   # cutoff / cardinality penalty scale
+c = 10000   # cutoff / cardinality penalty scale
 p = 1
 pos_measure = Euclidean((0, 2))  # OSPA in x/y only
 
@@ -278,12 +279,21 @@ metricmanager = MultiManager([ospa_pf_fib, ospa_ekf, ospa_iid])
 metricmanager.add_data(
 	{
 		"PF_tracks": g_mean_track,
-		"EKF_tracks": k_track,
+		"EKF_tracks": k_mean_track,
 		"PF_IID_tracks": iid_mean_track,
 		"truths": truth_path
 	}
 )
 metrics = metricmanager.generate_metrics()
+
+from stonesoup.plotter import AnimatedPlotterly
+plotter = AnimatedPlotterly(times, tail_length=0.3)
+plotter.plot_ground_truths(truth_path, [0, 2])
+plotter.plot_ground_truths(platform_path, [0, 2], label="Sensor platform")
+plotter.plot_tracks(g_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Deterministic Samples")
+plotter.plot_tracks(k_mean_track, [0, 2], particle=False, plot_history=False, label="Extended Kalman Filter", line=dict(color='green'), marker=dict(color='green'))
+plotter.plot_tracks(iid_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Random Samples", line=dict(color='red'), marker=dict(color='red'))
+plotter.fig
 
 # # %%
 # open browser for non interactive view
