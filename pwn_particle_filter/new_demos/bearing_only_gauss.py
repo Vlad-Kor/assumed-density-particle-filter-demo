@@ -94,12 +94,12 @@ from stonesoup.types.array import StateVectors
 transition_model = CombinedLinearGaussianTransitionModel([
     ConstantVelocity(1.0), ConstantVelocity(1.0)])
 
-LVol = 1000
+sample_size = 1000
 
 # Sample from the prior Gaussian distribution around the true initial state
 samples = sample_gaussian_fibonacci(np.array([50, 0, 50, 0]),
 								  np.diag([1, 1, 1, 1]),
-								  LVol,
+								  sample_size,
 								  type='Fibonacci')
 
 number_particles = samples.shape[0]

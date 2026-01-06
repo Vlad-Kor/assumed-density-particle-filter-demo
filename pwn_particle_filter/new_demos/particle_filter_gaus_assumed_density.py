@@ -80,9 +80,9 @@ from stonesoup.resampler.base import Resampler
 from stonesoup.base import Property
 
 
-LVol = 1000
+sample_size = 1000
 from pwn_particle_filter.resampler import GausADResampler
-resampler = GausADResampler(LVol)
+resampler = GausADResampler(sample_size)
 from stonesoup.updater.particle import ParticleUpdater
 updater = ParticleUpdater(measurement_model, resampler)
 
@@ -105,7 +105,7 @@ from deterministic_gaussian_sampling_fibonacci import sample_gaussian_fibonacci
 # Sample from the prior Gaussian distribution
 samples = sample_gaussian_fibonacci(np.array([0, 1, 0, 1]),
 								  np.diag([1.5, 0.5, 1.5, 0.5]),
-								  LVol,
+								  sample_size,
 								  type='Fibonacci')
 
 number_particles = samples.shape[0]

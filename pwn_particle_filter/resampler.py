@@ -16,7 +16,7 @@ class GausADResampler(Resampler):
 	n_samples: int = Property(default=1000,
 							 doc="Number of samples to draw from the distribution.")
 	def resample(self, particles):
-		LVol = self.n_samples
+		sample_size = self.n_samples
 		
 
 		# StoneSoup stores particles as (ndim, N)
@@ -32,7 +32,7 @@ class GausADResampler(Resampler):
 		C = (Xm.T * w) @ Xm
 
 		# deterministic redraw
-		X_new = sample_gaussian_fibonacci(mu, C, LVol, type='Fibonacci')  # (N, ndim)
+		X_new = sample_gaussian_fibonacci(mu, C, sample_size, type='Fibonacci')  # (N, ndim)
 		N = X_new.shape[0]
 
 		# return a NEW ParticleState with uniform weights
@@ -45,7 +45,7 @@ class PWADResampler(Resampler):
 	n_samples: int = Property(default=1000,
 							 doc="Number of samples to draw from the distribution.")
 	def resample(self, particles):
-		LVol = self.n_samples
+		sample_size = self.n_samples
 		
 
 		# StoneSoup stores particles as (ndim, N)
@@ -54,7 +54,7 @@ class PWADResampler(Resampler):
 		
 
 		# deterministic redraw
-		X_new = sample_gaussian_fibonacci(mu, C, LVol, type='Fibonacci')  # (N, ndim)
+		X_new = sample_gaussian_fibonacci(mu, C, sample_size, type='Fibonacci')  # (N, ndim)
 		X_new[:,0] = X_new[:,0] % (2 * np.pi)
 		N = X_new.shape[0]
 

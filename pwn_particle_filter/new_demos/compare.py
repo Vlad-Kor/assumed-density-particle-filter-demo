@@ -108,20 +108,19 @@ transition_model = CombinedLinearGaussianTransitionModel([
 prior_mu = np.array([50, 0, 50, 0])
 prior_cov = np.diag([1, 1, 1, 1])
 
-LVol = 1000
+sample_size = 1000
 
 # Sample from the prior Gaussian distribution around the true initial state
 samples = sample_gaussian_fibonacci(prior_mu,
 								  prior_cov,
-								  LVol,
+								  sample_size,
 								  type='Fibonacci')
 
-number_particles = samples.shape[0]
 
 # Create prior particle and kalman state.
 from stonesoup.types.groundtruth import GroundTruthPath, GroundTruthState
 g_prior = ParticleState(state_vector=StateVectors(samples.T),
-					  weight=np.array([Probability(1/number_particles)]*number_particles),
+					  weight=np.array([Probability(1/sample_size)]*sample_size),
 					  timestamp=start_time)
 k_prior = GaussianState(
 	state_vector=StateVector(prior_mu.reshape(-1,1)),
