@@ -48,7 +48,7 @@ from stonesoup.platform.base import MovingPlatform
 # Define the platform location, place it in the origin, and define its Cartesian movements.
 # In addition, specify the position and velocity mapping. This is done in 2D Cartesian coordinates.
 
-platform_state_vector = StateVector([[0], [0], [0], [0]])
+platform_state_vector = StateVector([[0], [-0.3], [0], [0]])
 position_mapping = (0, 2)
 velocity_mapping = (1, 3)
 
@@ -259,7 +259,7 @@ iid_mean_track = get_mean_from_particle_track(iid_track)
 
 
 # OSPA parameters
-c = 10000   # cutoff / cardinality penalty scale
+c = 1000   # cutoff / cardinality penalty scale
 p = 1
 pos_measure = Euclidean((0, 2))  # OSPA in x/y only
 
