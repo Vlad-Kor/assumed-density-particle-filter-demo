@@ -4,6 +4,12 @@ requirements: poetry: `pip install poetry`
 run with:
 
 ```shell
+poetry run python -m pwn_particle_filter.new_demos.compare
+```
+
+
+run demos on their own
+```shell
 poetry run python -m pwn_particle_filter.new_demos.particle_filter_gaus_assumed_density
 ```
 
