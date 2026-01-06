@@ -21,6 +21,7 @@ from stonesoup.deleter.time import UpdateTimeStepsDeleter
 from stonesoup.tracker.simple import SingleTargetTracker
 from stonesoup.updater.kalman import ExtendedKalmanUpdater
 from stonesoup.predictor.kalman import ExtendedKalmanPredictor
+from stonesoup.resampler.particle import ESSResampler
 
 # load compare stuff
 from stonesoup.metricgenerator.manager import MultiManager
@@ -108,7 +109,7 @@ transition_model = CombinedLinearGaussianTransitionModel([
 prior_mu = np.array([50, 0, 50, 0])
 prior_cov = np.diag([1, 1, 1, 1])
 
-sample_size = 1000
+sample_size = 100
 
 # Sample from the prior Gaussian distribution around the true initial state
 samples = sample_gaussian_fibonacci(prior_mu,
@@ -169,6 +170,11 @@ g_predictor = ParticlePredictor(transition_model)
 g_updater = ParticleUpdater(measurement_model=meas_model,
 						 resampler=GausADResampler())
 
+iid_predictor = ParticlePredictor(transition_model)
+iid_updater = ParticleUpdater(measurement_model=meas_model,
+							resampler=ESSResampler())
+							
+
 k_predictor = ExtendedKalmanPredictor(transition_model)
 k_updater = ExtendedKalmanUpdater(measurement_model=None)
 
@@ -193,32 +199,39 @@ for time, detections in sim:
 
 g_track = Track()
 k_track = Track()
+iid_track = Track()
 g_state = g_prior
-
+iid_state = g_prior
 
 for time, detections in saved_detections:
 	g_prediction = g_predictor.predict(g_track[-1] if g_track else g_prior, timestamp=time)
 	k_prediction = k_predictor.predict(k_track[-1] if k_track else k_prior, timestamp=time)
+	iid_prediction = iid_predictor.predict(iid_track[-1] if iid_track else iid_state, timestamp=time)
 
 	if detections:
 		det = next(iter(detections))
 		g_updater.measurement_model = det.measurement_model
 		g_state = g_updater.update(SingleHypothesis(g_prediction, det))
+		iid_updater.measurement_model = det.measurement_model
+		iid_state = iid_updater.update(SingleHypothesis(iid_prediction, det))
 		k_updater.measurement_model = det.measurement_model
 		k_state = k_updater.update(SingleHypothesis(k_prediction, det))
 	else:
 		g_state = g_prediction
 		k_state = k_prediction
+		iid_state = iid_prediction
 
 	g_track.append(g_state)
 	k_track.append(k_state)
+	iid_track.append(iid_state)
 
 from stonesoup.plotter import AnimatedPlotterly
 plotter = AnimatedPlotterly(times, tail_length=0.3)
 plotter.plot_ground_truths(truth_path, [0, 2])
 plotter.plot_ground_truths(platform_path, [0, 2], label="Sensor platform")
-plotter.plot_tracks(g_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with GausADResampler")
+plotter.plot_tracks(g_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Deterministic Samples")
 plotter.plot_tracks(k_track, [0, 2], particle=False, plot_history=False, label="Extended Kalman Filter", line=dict(color='green'), marker=dict(color='green'))
+plotter.plot_tracks(iid_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Random Samples", line=dict(color='red'), marker=dict(color='red'))
 plotter.fig
 
 # Now compare them both
@@ -240,11 +253,12 @@ def get_mean_from_particle_track(track):
 	return mean_track
 
 g_mean_track = get_mean_from_particle_track(g_track)
+iid_mean_track = get_mean_from_particle_track(iid_track)
 
 
 
 # OSPA parameters
-c = 40   # cutoff / cardinality penalty scale
+c = 100   # cutoff / cardinality penalty scale
 p = 1
 pos_measure = Euclidean((0, 2))  # OSPA in x/y only
 
@@ -256,11 +270,16 @@ ospa_ekf = OSPAMetric(c=c, p=p, measure=pos_measure,
 							generator_name="OSPA_EKF",
 							tracks_key="EKF_tracks", truths_key="truths")
 
-metricmanager = MultiManager([ospa_pf_fib, ospa_ekf])
+ospa_iid = OSPAMetric(c=c, p=p, measure=pos_measure,
+							generator_name="OSPA_PF_IID",
+							tracks_key="PF_IID_tracks", truths_key="truths")
+
+metricmanager = MultiManager([ospa_pf_fib, ospa_ekf, ospa_iid])
 metricmanager.add_data(
 	{
 		"PF_tracks": g_mean_track,
 		"EKF_tracks": k_track,
+		"PF_IID_tracks": iid_mean_track,
 		"truths": truth_path
 	}
 )
@@ -273,7 +292,7 @@ if __name__ == "__main__":
 		plotter.fig.write_html("particle_filter.html", auto_open=True)
 
 		graph = MetricPlotter()
-		graph.plot_metrics(metrics, generator_names=["OSPA_PF_FIB", "OSPA_EKF"])
+		graph.plot_metrics(metrics, generator_names=["OSPA_PF_FIB", "OSPA_EKF", "OSPA_PF_IID"])
 		plt.show()
 
 	except Exception as e:
