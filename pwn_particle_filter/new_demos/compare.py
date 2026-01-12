@@ -30,7 +30,7 @@ from stonesoup.measures import Euclidean
 from stonesoup.plotter import MetricPlotter
 
 # set a random seed and start of the simulation
-np.random.seed(2001)
+np.random.seed(200)
 start_time = datetime.now()
 
 # %%
@@ -117,6 +117,10 @@ samples = sample_gaussian_fibonacci(prior_mu,
 								  sample_size,
 								  type='Fibonacci')
 
+samples_iid = np.random.multivariate_normal(prior_mu,
+										   prior_cov,
+										   sample_size)
+
 
 # Create prior particle and kalman state.
 from stonesoup.types.groundtruth import GroundTruthPath, GroundTruthState
@@ -127,6 +131,10 @@ k_prior = GaussianState(
 	state_vector=StateVector(prior_mu.reshape(-1,1)),
 	covar=CovarianceMatrix(prior_cov),
 	timestamp=start_time)
+
+iid_prior = ParticleState(state_vector=StateVectors(samples_iid.T),
+					  weight=np.array([Probability(1/sample_size)]*sample_size),
+					  timestamp=start_time)
 
 
 
@@ -201,7 +209,7 @@ g_track = Track()
 k_track = Track()
 iid_track = Track()
 g_state = g_prior
-iid_state = g_prior
+iid_state = iid_prior
 
 for time, detections in saved_detections:
 	g_prediction = g_predictor.predict(g_track[-1] if g_track else g_prior, timestamp=time)
@@ -292,7 +300,9 @@ plotter.plot_ground_truths(truth_path, [0, 2])
 plotter.plot_ground_truths(platform_path, [0, 2], label="Sensor platform")
 plotter.plot_tracks(g_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Deterministic Samples")
 plotter.plot_tracks(k_mean_track, [0, 2], particle=False, plot_history=False, label="Extended Kalman Filter", line=dict(color='green'), marker=dict(color='green'))
-plotter.plot_tracks(iid_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Random Samples", line=dict(color='red'), marker=dict(color='red'))
+#plotter.plot_tracks(iid_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Random Samples", line=dict(color='red'), marker=dict(color='red'))
+plotter.plot_tracks(iid_mean_track, [0, 2], particle=False, plot_history=False, label="Particle Filter with Random Samples", line=dict(color='red'), marker=dict(color='red'))
+
 plotter.fig
 
 # # %%
