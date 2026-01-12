@@ -30,7 +30,7 @@ from stonesoup.measures import Euclidean
 from stonesoup.plotter import MetricPlotter
 
 # set a random seed and start of the simulation
-np.random.seed(200)
+np.random.seed(206)
 start_time = datetime.now()
 
 # %%
@@ -57,7 +57,7 @@ platform_state = State(platform_state_vector, start_time)
 
 # Create a platform transition model, let's assume it is moving with constant velocity
 platform_transition_model = CombinedLinearGaussianTransitionModel([
-	ConstantVelocity(0.1), ConstantVelocity(0)])
+	ConstantVelocity(0), ConstantVelocity(0)])
 
 # We can instantiate the platform's initial state, position and velocity mapping, and 
 # the transition model using the  :class:`~.MovingPlatform` platform class.
@@ -103,13 +103,15 @@ from stonesoup.types.array import StateVectors
 
 # Instantiate the transition model
 transition_model = CombinedLinearGaussianTransitionModel([
-	ConstantVelocity(5.0), ConstantVelocity(5.0)])
+#	ConstantVelocity(5.0), ConstantVelocity(5.0)])
+ 	ConstantVelocity(1.0), ConstantVelocity(1.0)])
+
 
 # make prior
 # Target starts near the path
 prior_mu = np.array([80, -8, 12, -1])
 prior_cov = np.diag([60**2, 4**2, 60**2, 4**2])
-sample_size = 1000
+sample_size = 10000
 
 # Sample from the prior Gaussian distribution around the true initial state
 samples = sample_gaussian_fibonacci(prior_mu,
@@ -193,7 +195,7 @@ from stonesoup.types.hypothesis import SingleHypothesis
 from stonesoup.types.track import Track
 
 times = []
-truth_path = GroundTruthPath()
+truth_path = GroundTruthPath([initial_truth])
 platform_path = GroundTruthPath()
 saved_detections = []  # list[(time, detections_set)]
 
@@ -205,9 +207,9 @@ for time, detections in sim:
 	truth_path.append(gt[-1])                           # GroundTruthState at this time
 	platform_path.append(GroundTruthState(platform.state_vector, timestamp=time))
 
-g_track = Track()
-k_track = Track()
-iid_track = Track()
+g_track = Track([g_prior])
+iid_track = Track([iid_prior])
+k_track = Track([k_prior])
 g_state = g_prior
 iid_state = iid_prior
 
@@ -286,30 +288,45 @@ ospa_iid = OSPAMetric(c=c, p=p, measure=pos_measure,
 metricmanager = MultiManager([ospa_pf_fib, ospa_ekf, ospa_iid])
 metricmanager.add_data(
 	{
-		"PF_tracks": g_mean_track,
-		"EKF_tracks": k_mean_track,
-		"PF_IID_tracks": iid_mean_track,
-		"truths": truth_path
+		"PF_tracks": {g_mean_track},
+		"EKF_tracks": {k_mean_track},
+		"PF_IID_tracks": {iid_mean_track},
+		"truths": {truth_path}
 	}
 )
 metrics = metricmanager.generate_metrics()
 
-from stonesoup.plotter import AnimatedPlotterly
-plotter = AnimatedPlotterly(times, tail_length=0.3)
-plotter.plot_ground_truths(truth_path, [0, 2])
-plotter.plot_ground_truths(platform_path, [0, 2], label="Sensor platform")
-plotter.plot_tracks(g_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Deterministic Samples")
-plotter.plot_tracks(k_mean_track, [0, 2], particle=False, plot_history=False, label="Extended Kalman Filter", line=dict(color='green'), marker=dict(color='green'))
-#plotter.plot_tracks(iid_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Random Samples", line=dict(color='red'), marker=dict(color='red'))
-plotter.plot_tracks(iid_mean_track, [0, 2], particle=False, plot_history=False, label="Particle Filter with Random Samples", line=dict(color='red'), marker=dict(color='red'))
+from stonesoup.plotter import AnimatedPlotterly, AnimationPlotter
+PLOTTER = "mpp"
 
-plotter.fig
+if PLOTTER == "plotly":
+	plotter = AnimatedPlotterly(times, tail_length=0.3)
+	plotter.plot_ground_truths(truth_path, [0, 2])
+	plotter.plot_ground_truths(platform_path, [0, 2], label="Sensor platform")
+	plotter.plot_tracks(g_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Deterministic Samples")
+	plotter.plot_tracks(k_mean_track, [0, 2], particle=False, plot_history=False, label="Extended Kalman Filter", line=dict(color='green'), marker=dict(color='green'))
+	#plotter.plot_tracks(iid_track, [0, 2], particle=True, plot_history=False, label="Particle Filter with Random Samples", line=dict(color='red'), marker=dict(color='red'))
+	plotter.plot_tracks(iid_mean_track, [0, 2], particle=False, plot_history=False, label="Particle Filter with Random Samples", line=dict(color='red'), marker=dict(color='red'))
+
+	plotter.fig
+else:
+	plotter = AnimationPlotter(legend_kwargs=dict(loc='upper left'))
+	plotter.plot_ground_truths(truth_path, [0, 2])
+	plotter.plot_ground_truths(platform_path, [0, 2], label="Sensor platform")
+
+	plotter.plot_tracks(g_mean_track, [0, 2], label="Particle Filter with Deterministic Samples")
+	plotter.plot_tracks(k_mean_track, [0, 2], label="Extended Kalman Filter")
+	plotter.plot_tracks(iid_mean_track, [0, 2], label="Particle Filter with Random Samples")
 
 # # %%
 # open browser for non interactive view
 if __name__ == "__main__":
 	try:
-		plotter.fig.write_html("particle_filter.html", auto_open=True)
+		if PLOTTER == "plotly":
+			plotter.fig.write_html("particle_filter.html", auto_open=True)
+		else:
+			anim = plotter.run()
+			plt.show()
 
 		graph = MetricPlotter()
 		graph.plot_metrics(metrics, generator_names=["OSPA_PF_FIB", "OSPA_EKF", "OSPA_PF_IID"])
