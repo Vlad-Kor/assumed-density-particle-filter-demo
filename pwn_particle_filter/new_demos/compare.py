@@ -30,8 +30,12 @@ from stonesoup.measures import Euclidean
 from stonesoup.plotter import MetricPlotter
 
 # set a random seed and start of the simulation
-np.random.seed(206)
+np.random.seed(201)
 start_time = datetime.now()
+
+# interesting seeds: 
+#    201 - kalman really good
+#    206 - det does much better
 
 # %%
 # 1) Create the moving platform and the Bearing-Only radar
@@ -48,7 +52,8 @@ from stonesoup.platform.base import MovingPlatform
 # Define the platform location, place it in the origin, and define its Cartesian movements.
 # In addition, specify the position and velocity mapping. This is done in 2D Cartesian coordinates.
 
-platform_state_vector = StateVector([[0], [-0.3], [0], [0]])
+#platform_state_vector = StateVector([[0], [-0.3], [0], [0]])
+platform_state_vector = StateVector([[0], [-5], [0], [-7]])
 position_mapping = (0, 2)
 velocity_mapping = (1, 3)
 
@@ -109,8 +114,10 @@ transition_model = CombinedLinearGaussianTransitionModel([
 
 # make prior
 # Target starts near the path
-prior_mu = np.array([80, -8, 12, -1])
-prior_cov = np.diag([60**2, 4**2, 60**2, 4**2])
+#prior_mu = np.array([80, -8, 12, -1])
+#prior_cov = np.diag([60**2, 4**2, 60**2, 4**2])
+prior_mu = np.array([50, 0, 50, 0])
+prior_cov = np.diag([1, 1, 1, 1]) ** 2
 sample_size = 10000
 
 # Sample from the prior Gaussian distribution around the true initial state
