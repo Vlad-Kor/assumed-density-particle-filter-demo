@@ -195,7 +195,7 @@ from stonesoup.types.hypothesis import SingleHypothesis
 from stonesoup.types.track import Track
 
 times = []
-truth_path = GroundTruthPath([initial_truth])
+truth_path = GroundTruthPath()
 platform_path = GroundTruthPath()
 saved_detections = []  # list[(time, detections_set)]
 
@@ -207,9 +207,9 @@ for time, detections in sim:
 	truth_path.append(gt[-1])                           # GroundTruthState at this time
 	platform_path.append(GroundTruthState(platform.state_vector, timestamp=time))
 
-g_track = Track([g_prior])
-iid_track = Track([iid_prior])
-k_track = Track([k_prior])
+g_track = Track()
+iid_track = Track()
+k_track = Track()
 g_state = g_prior
 iid_state = iid_prior
 
@@ -244,7 +244,7 @@ def get_mean_from_particle_track(track):
 	
 	for state in track:
 		weights = state.weight
-		state_vectors = state.state_vector.data  # shape (num_particles, dim)
+		state_vectors = state.state_vector.data  # shape (ndim, N)
 		
 		w = weights / np.sum(weights)
 		mean_vector = np.sum(state_vectors * w, axis=1, keepdims=True)
@@ -256,45 +256,41 @@ def get_mean_from_particle_track(track):
 	return mean_track
 
 def gaussian_track_to_mean_state_track(track): # when kalman fails cov can have complex numbers
-    out = Track()
-    for s in track:
-        out.append(State(state_vector=StateVector(np.asarray(s.state_vector)),
-                         timestamp=s.timestamp))
-    return out
+	out = Track()
+	for s in track:
+		out.append(State(state_vector=StateVector(np.asarray(s.state_vector)),
+						 timestamp=s.timestamp))
+	return out
 
 k_mean_track = gaussian_track_to_mean_state_track(k_track)
 g_mean_track = get_mean_from_particle_track(g_track)
 iid_mean_track = get_mean_from_particle_track(iid_track)
 
+def track_to_np_array(track, xy_idx=(0, 1)): # shape (time, ndim)
+	rows = []
+	for s in track:
+		v = np.asarray(s.state_vector).reshape(-1)   # (ndim,)
+		rows.append(v[list(xy_idx)])                 # (2,)
+	return np.vstack(np.asarray(rows, dtype=float))  # (time, 2)
+
+# calculate rmse over time
+k_val = track_to_np_array(k_mean_track, xy_idx=(0,2)) # shape (time, 2)
+g_val = track_to_np_array(g_mean_track, xy_idx=(0,2))
+iid_val = track_to_np_array(iid_mean_track, xy_idx=(0,2))
+truth_val = track_to_np_array(truth_path, xy_idx=(0,2))
+
+# add values at time 0
+k_val = np.vstack((np.asarray(k_prior.state_vector[[0,2]]).reshape(1,-1), k_val))
+g_val = np.vstack((np.mean(np.asarray(g_prior.state_vector[[0,2]]), axis=1).reshape(1,-1), g_val))
+iid_val = np.vstack((np.mean(np.asarray(iid_prior.state_vector[[0,2]]), axis=1).reshape(1,-1), iid_val))
+truth_val = np.vstack((np.asarray(initial_truth.state_vector[[0,2]]).reshape(1,-1), truth_val))
 
 
-# OSPA parameters
-c = 1000   # cutoff / cardinality penalty scale
-p = 1
-pos_measure = Euclidean((0, 2))  # OSPA in x/y only
+rmse_k = np.sqrt(np.mean((k_val - truth_val)**2, axis=1))
+rmse_g = np.sqrt(np.mean((g_val - truth_val)**2, axis=1))
+rmse_iid = np.sqrt(np.mean((iid_val - truth_val)**2, axis=1))
 
-ospa_pf_fib = OSPAMetric(c=c, p=p, measure=pos_measure,
-						   generator_name="OSPA_PF_FIB",
-						   tracks_key="PF_tracks", truths_key="truths")
-
-ospa_ekf = OSPAMetric(c=c, p=p, measure=pos_measure,
-							generator_name="OSPA_EKF",
-							tracks_key="EKF_tracks", truths_key="truths")
-
-ospa_iid = OSPAMetric(c=c, p=p, measure=pos_measure,
-							generator_name="OSPA_PF_IID",
-							tracks_key="PF_IID_tracks", truths_key="truths")
-
-metricmanager = MultiManager([ospa_pf_fib, ospa_ekf, ospa_iid])
-metricmanager.add_data(
-	{
-		"PF_tracks": {g_mean_track},
-		"EKF_tracks": {k_mean_track},
-		"PF_IID_tracks": {iid_mean_track},
-		"truths": {truth_path}
-	}
-)
-metrics = metricmanager.generate_metrics()
+# %%
 
 from stonesoup.plotter import AnimatedPlotterly, AnimationPlotter
 PLOTTER = "mpp"
@@ -328,8 +324,14 @@ if __name__ == "__main__":
 			anim = plotter.run()
 			plt.show()
 
-		graph = MetricPlotter()
-		graph.plot_metrics(metrics, generator_names=["OSPA_PF_FIB", "OSPA_EKF", "OSPA_PF_IID"])
+		# plot RMSE
+		plt.figure()
+		plt.plot(rmse_g, label="Particle Filter with Deterministic Samples")
+		plt.plot(rmse_k, label="Extended Kalman Filter")
+		plt.plot(rmse_iid, label="Particle Filter with Random Samples")
+		plt.xlabel("Time")
+		plt.ylabel("Position RMSE (m)")
+		plt.legend()
 		plt.show()
 
 	except Exception as e:
