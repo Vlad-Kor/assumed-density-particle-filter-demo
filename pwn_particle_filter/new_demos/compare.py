@@ -313,7 +313,7 @@ if PLOTTER == "plotly":
 
 	plotter.fig
 else:
-	plotter = AnimationPlotter(legend_kwargs=dict(loc='upper left'))
+	plotter = AnimationPlotter(legend_kwargs=dict(loc='lower left'))
 	plotter.plot_ground_truths(truth_path, [0, 2])
 	plotter.plot_ground_truths(platform_path, [0, 2], label="Sensor platform")
 
